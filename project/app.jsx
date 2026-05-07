@@ -15,22 +15,83 @@ function XtractApp() {
   // App-level state
   const [screen, setScreen] = aUseState("queue"); // empty | upload | processing | review | queue | history
   const [pendingDocs, setPendingDocs] = aUseState(window.DOCUMENTS);
-  const [history, setHistory] = aUseState(window.HISTORY);
+  const [history, setHistory] = aUseState(() => loadStoredHistory() || window.HISTORY);
   const [activeIdx, setActiveIdx] = aUseState(0);
   const [savedToast, setSavedToast] = aUseState(null);
   const [showSaveOverlay, setShowSaveOverlay] = aUseState(null);
   const [processedToday, setProcessedToday] = aUseState(127);
+  const [uploadedFileCount, setUploadedFileCount] = aUseState(0);
+  const extractPromiseRef = aUseRef(null);
 
   // Apply theme to root
   aUseEffect(() => {
     document.documentElement.setAttribute("data-theme", t.theme);
   }, [t.theme]);
 
+  const [showApiKeyModal, setShowApiKeyModal] = aUseState(false);
+  const [apiKeyInput, setApiKeyInput] = aUseState("");
+  const pendingFilesRef = aUseRef(null);
+
   function startUpload() { setScreen("upload"); }
+
   function onUploaded(files) {
+    const realFiles = files.filter(f => f._file instanceof File).map(f => f._file);
+    setUploadedFileCount(files.length);
+
+    if (realFiles.length > 0) {
+      extractPromiseRef.current = (async () => {
+        // Try Node server first (fast timeout)
+        const serverUp = await checkServerAvailable();
+        if (serverUp) {
+          const formData = new FormData();
+          realFiles.forEach(f => formData.append("files", f));
+          const res = await fetch("/api/extract-batch", { method: "POST", body: formData });
+          if (res.ok) return (await res.json()).docs;
+        }
+
+        // Fall back to browser-side extraction
+        const apiKey = getStoredApiKey();
+        if (!apiKey) {
+          // Pause and wait for the user to enter their key
+          pendingFilesRef.current = realFiles;
+          setShowApiKeyModal(true);
+          return await new Promise((resolve, reject) => {
+            window.__xtractApiKeyResolve = resolve;
+            window.__xtractApiKeyReject  = reject;
+          });
+        }
+        return await extractBatchBrowser(realFiles, apiKey);
+      })();
+    } else {
+      extractPromiseRef.current = null;
+    }
+
     setScreen("processing");
   }
-  function onProcessed() {
+
+  async function submitApiKey() {
+    const key = apiKeyInput.trim();
+    if (!key) return;
+    saveApiKey(key);
+    setShowApiKeyModal(false);
+    setApiKeyInput("");
+    const files = pendingFilesRef.current;
+    pendingFilesRef.current = null;
+    if (window.__xtractApiKeyResolve && files) {
+      try {
+        const docs = await extractBatchBrowser(files, key);
+        window.__xtractApiKeyResolve(docs);
+      } catch (err) {
+        window.__xtractApiKeyReject(err);
+      }
+    }
+  }
+
+  function onProcessed(extractedDocs) {
+    if (extractedDocs && extractedDocs.length > 0) {
+      setPendingDocs(extractedDocs);
+    }
+    extractPromiseRef.current = null;
     setScreen("queue");
   }
   function onProcessSelected(ids) {
@@ -57,8 +118,10 @@ function XtractApp() {
         flagged: doc.fields.flatMap(g => g.fields).filter(f => f.confidence < 0.75 && !edited[f.key]).length,
         total: values.total || values.freight_amount || values.balance || "—",
         status: "Verified",
+        fieldValues: { ...values },
       }, ...history];
       setHistory(newHist);
+      saveStoredHistory(newHist);
       const newPending = pendingDocs.filter((_, i) => i !== activeIdx);
       setPendingDocs(newPending);
       setProcessedToday(p => p + 1);
@@ -105,7 +168,7 @@ function XtractApp() {
     />;
   } else if (screen === "history") {
     topbar = <Topbar title="Saved Documents" subtitle={`${history.length} records · ${processedToday} today`} right={<>
-      <Btn variant="ghost" icon={I.download}>Export all</Btn>
+      <Btn variant="ghost" icon={I.download} onClick={() => exportToExcel(history)}>Export to Excel</Btn>
     </>}/>;
   } else if (screen === "upload") {
     topbar = <Topbar title="Upload Documents" subtitle="Drag &amp; drop or browse"/>;
@@ -126,7 +189,11 @@ function XtractApp() {
   } else if (screen === "upload") {
     body = <UploadScreen onUploaded={onUploaded} onCancel={() => setScreen("queue")}/>;
   } else if (screen === "processing") {
-    body = <ProcessingScreen count={pendingDocs.length || 7} onDone={onProcessed}/>;
+    body = <ProcessingScreen
+      count={uploadedFileCount || pendingDocs.length || 7}
+      onDone={onProcessed}
+      extractPromise={extractPromiseRef.current}
+    />;
   } else if (screen === "review") {
     if (pendingDocs.length === 0) {
       body = <AllDoneState onBack={() => setScreen("queue")}/>;
@@ -184,6 +251,38 @@ function XtractApp() {
           onNext={() => dismissSaveOverlay(true)}
           onView={() => { dismissSaveOverlay(true); setScreen("history"); }}
         />
+      )}
+
+      {showApiKeyModal && (
+        <div className="x-saveoverlay">
+          <div className="x-savecard" style={{ maxWidth: 440, textAlign: "left" }}>
+            <h3 className="x-savecard__h" style={{ marginBottom: 4 }}>Enter your Anthropic API key</h3>
+            <p className="x-savecard__p" style={{ marginBottom: 16 }}>
+              The extraction server isn't available. You can extract directly from the browser by providing your API key — it's stored only in this browser's localStorage.
+            </p>
+            <input
+              type="password"
+              placeholder="sk-ant-..."
+              value={apiKeyInput}
+              onChange={e => setApiKeyInput(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && submitApiKey()}
+              autoFocus
+              style={{
+                width: "100%", boxSizing: "border-box", padding: "8px 12px",
+                border: "1px solid var(--line)", borderRadius: 6, fontSize: 13,
+                fontFamily: "var(--font-mono)", marginBottom: 12,
+                background: "var(--surface)", color: "var(--text)",
+              }}
+            />
+            <div className="x-savecard__row">
+              <Btn variant="ghost" onClick={() => { setShowApiKeyModal(false); if (window.__xtractApiKeyReject) window.__xtractApiKeyReject(new Error("cancelled")); }}>Cancel</Btn>
+              <Btn variant="primary" disabled={!apiKeyInput.trim()} onClick={submitApiKey}>Start extraction</Btn>
+            </div>
+            <p style={{ fontSize: 11, color: "var(--muted)", marginTop: 10 }}>
+              Get a key at <a href="https://console.anthropic.com" target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>console.anthropic.com</a>
+            </p>
+          </div>
+        </div>
       )}
 
       <XtractTweaks t={t} setTweak={setTweak}/>

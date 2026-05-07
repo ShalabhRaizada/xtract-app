@@ -112,29 +112,51 @@ function EmptyState({ onUpload }) {
 function UploadScreen({ onUploaded, onCancel }) {
   const [dragging, setDragging] = useState(false);
   const [files, setFiles] = useState([]);
+  const inputRef = useRef(null);
 
-  const fakeFiles = [
-    { name: "INV-2026-04821.pdf", size: "284 KB", type: "invoice" },
-    { name: "LR_MLP-BLR-11240.pdf", size: "198 KB", type: "lorry" },
-    { name: "POD_HFC_05021432.jpg", size: "612 KB", type: "pod" },
-    { name: "INV-2026-04822.pdf", size: "271 KB", type: "invoice" },
-    { name: "LR_MLP-BLR-11241.pdf", size: "204 KB", type: "lorry" },
-    { name: "POD_HFC_05031108.jpg", size: "588 KB", type: "pod" },
-    { name: "INV-2026-04823.pdf", size: "295 KB", type: "invoice" },
+  const DEMO_FILES = [
+    { name: "INV-2026-04821.pdf", sizeKb: 284, _isDemo: true },
+    { name: "LR_MLP-BLR-11240.pdf", sizeKb: 198, _isDemo: true },
+    { name: "POD_HFC_05021432.jpg", sizeKb: 612, _isDemo: true },
+    { name: "INV-2026-04822.pdf", sizeKb: 271, _isDemo: true },
+    { name: "LR_MLP-BLR-11241.pdf", sizeKb: 204, _isDemo: true },
+    { name: "POD_HFC_05031108.jpg", sizeKb: 588, _isDemo: true },
+    { name: "INV-2026-04823.pdf", sizeKb: 295, _isDemo: true },
   ];
 
-  function simulateDrop() {
-    setFiles(fakeFiles);
+  function addFiles(fileList) {
+    const newFiles = Array.from(fileList).map(f => ({
+      name: f.name,
+      sizeKb: Math.round(f.size / 1024),
+      _file: f,
+    }));
+    setFiles(prev => [...prev, ...newFiles]);
+  }
+
+  function guessDocTypeBadge(name) {
+    const n = name.toLowerCase();
+    if (n.includes("inv") || n.includes("invoice")) return { type: "invoice", label: "Invoice" };
+    if (n.includes("lr") || n.includes("lorry") || n.includes("gr")) return { type: "lorry", label: "Lorry Receipt" };
+    if (n.includes("pod") || n.includes("delivery")) return { type: "pod", label: "POD" };
+    return { type: "invoice", label: "Auto-detect" };
   }
 
   return (
     <div className="x-upload">
+      <input
+        ref={inputRef}
+        type="file"
+        multiple
+        accept=".pdf,.jpg,.jpeg,.png,.tiff,.tif"
+        style={{ display: "none" }}
+        onChange={e => { addFiles(e.target.files); e.target.value = ""; }}
+      />
       <div
         className={cx("x-dropzone", dragging && "x-dropzone--drag", files.length && "x-dropzone--has")}
         onDragOver={e => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
-        onDrop={e => { e.preventDefault(); setDragging(false); simulateDrop(); }}
-        onClick={() => !files.length && simulateDrop()}
+        onDrop={e => { e.preventDefault(); setDragging(false); addFiles(e.dataTransfer.files); }}
+        onClick={() => !files.length && inputRef.current?.click()}
       >
         {!files.length ? (
           <>
@@ -146,28 +168,42 @@ function UploadScreen({ onUploaded, onCancel }) {
               <span className="x-chip">Up to 100 files / batch</span>
               <span className="x-chip">Auto-detects type</span>
             </div>
+            <div style={{ marginTop: 16 }}>
+              <button
+                className="x-btn x-btn--ghost x-btn--sm"
+                onClick={e => { e.stopPropagation(); setFiles(DEMO_FILES); }}
+              >
+                Load sample documents
+              </button>
+            </div>
           </>
         ) : (
           <div className="x-filelist">
             <div className="x-filelist__head">
-              <strong>{files.length} files ready</strong>
-              <span>Total {files.reduce((s, f) => s + parseInt(f.size), 0).toFixed(0)} KB</span>
+              <strong>{files.length} files ready{files.some(f => f._isDemo) ? " (demo)" : ""}</strong>
+              <span>Total {files.reduce((s, f) => s + (f.sizeKb || 0), 0)} KB</span>
             </div>
             <div className="x-filelist__rows">
-              {files.map((f, i) => (
-                <div key={i} className="x-filerow">
-                  <DocTypeBadge type={f.type} label={f.type === "invoice" ? "Invoice" : f.type === "lorry" ? "Lorry Receipt" : "Proof of Delivery"}/>
-                  <span className="x-filerow__name">{f.name}</span>
-                  <span className="x-filerow__size">{f.size}</span>
-                  <button className="x-filerow__x" onClick={e => { e.stopPropagation(); setFiles(files.filter((_, j) => j !== i)); }}>{I.trash}</button>
-                </div>
-              ))}
+              {files.map((f, i) => {
+                const badge = guessDocTypeBadge(f.name);
+                return (
+                  <div key={i} className="x-filerow">
+                    <DocTypeBadge type={badge.type} label={badge.label}/>
+                    <span className="x-filerow__name">{f.name}</span>
+                    <span className="x-filerow__size">{f.sizeKb} KB</span>
+                    <button className="x-filerow__x" onClick={e => { e.stopPropagation(); setFiles(files.filter((_, j) => j !== i)); }}>{I.trash}</button>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
       </div>
       <div className="x-upload__bar">
         <Btn variant="ghost" onClick={onCancel}>Cancel</Btn>
+        {files.length > 0 && !files.some(f => f._isDemo) && (
+          <Btn variant="ghost" size="sm" onClick={() => inputRef.current?.click()}>Add more</Btn>
+        )}
         <Btn variant="primary" size="lg" icon={I.spark} disabled={!files.length} onClick={() => onUploaded(files)}>
           Start extraction · {files.length} {files.length === 1 ? "doc" : "docs"}
         </Btn>
@@ -177,71 +213,94 @@ function UploadScreen({ onUploaded, onCancel }) {
 }
 
 // ---------------- Processing ----------------
-function ProcessingScreen({ count, onDone }) {
+function ProcessingScreen({ count, onDone, extractPromise }) {
   const stages = [
-    { id: "upload", label: "Uploading", duration: 800 },
-    { id: "ocr", label: "Reading pages", duration: 1400 },
-    { id: "extract", label: "Extracting fields", duration: 1800 },
-    { id: "verify", label: "Cross-checking", duration: 900 },
+    { id: "upload",  label: "Uploading",         duration: 800 },
+    { id: "ocr",     label: "Reading pages",      duration: 1400 },
+    { id: "extract", label: "Extracting fields",  duration: 1800 },
+    { id: "verify",  label: "Cross-checking",     duration: 900 },
   ];
-  const [stageIdx, setStageIdx] = useState(0);
-  const [progress, setProgress] = useState(0);
-  const [docIdx, setDocIdx] = useState(0);
+  const [stageIdx, setStageIdx]     = useState(0);
+  const [progress, setProgress]     = useState(0);
+  const [docIdx, setDocIdx]         = useState(0);
+  const [animDone, setAnimDone]     = useState(false);
+  // undefined = pending, null = no real extraction, Array = results
+  const [extractResult, setExtractResult] = useState(extractPromise ? undefined : null);
 
+  // Track extraction promise
   useEffect(() => {
-    let raf, t0 = performance.now();
-    let totalDuration = stages.reduce((s, x) => s + x.duration, 0);
+    if (!extractPromise) return;
+    extractPromise
+      .then(docs => setExtractResult(docs ?? null))
+      .catch(err => { console.warn("Extraction failed:", err); setExtractResult(null); });
+  }, []);
+
+  // Animation
+  useEffect(() => {
+    let raf;
+    const t0 = performance.now();
+    const totalDuration = stages.reduce((s, x) => s + x.duration, 0);
     function tick(now) {
       const elapsed = now - t0;
-      let acc = 0;
-      let curStage = 0;
+      let acc = 0, curStage = 0;
       for (let i = 0; i < stages.length; i++) {
-        if (elapsed >= acc && elapsed < acc + stages[i].duration) {
-          curStage = i; break;
-        }
+        if (elapsed >= acc && elapsed < acc + stages[i].duration) { curStage = i; break; }
         acc += stages[i].duration;
         curStage = i;
       }
       setStageIdx(curStage);
       setProgress(Math.min(1, elapsed / totalDuration));
       setDocIdx(Math.min(count - 1, Math.floor((elapsed / totalDuration) * count)));
-      if (elapsed < totalDuration) raf = requestAnimationFrame(tick);
-      else setTimeout(onDone, 250);
+      if (elapsed < totalDuration) { raf = requestAnimationFrame(tick); }
+      else { setAnimDone(true); }
     }
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, []);
 
+  // Fire onDone when animation AND extraction are both complete
+  useEffect(() => {
+    if (animDone && extractResult !== undefined) {
+      setTimeout(() => onDone(extractResult), 300);
+    }
+  }, [animDone, extractResult]);
+
+  const waitingForClaude = animDone && extractResult === undefined;
+
   return (
     <div className="x-processing">
       <div className="x-processing__inner">
         <div className="x-processing__spark">{I.spark}</div>
-        <h2 className="x-processing__h">Extracting fields from {count} documents</h2>
-        <p className="x-processing__sub">Document {docIdx + 1} of {count}</p>
+        <h2 className="x-processing__h">
+          {waitingForClaude ? "Claude is reading your documents…" : `Extracting fields from ${count} document${count !== 1 ? "s" : ""}`}
+        </h2>
+        <p className="x-processing__sub">
+          {waitingForClaude ? "This may take a moment for real documents" : `Document ${docIdx + 1} of ${count}`}
+        </p>
 
         <div className="x-stages">
           {stages.map((s, i) => (
-            <div key={s.id} className={cx("x-stage", i < stageIdx && "x-stage--done", i === stageIdx && "x-stage--active")}>
-              <div className="x-stage__num">{i < stageIdx ? <span className="x-stage__check">{I.check}</span> : i + 1}</div>
+            <div key={s.id} className={cx("x-stage", (i < stageIdx || animDone) && "x-stage--done", i === stageIdx && !animDone && "x-stage--active")}>
+              <div className="x-stage__num">{(i < stageIdx || animDone) ? <span className="x-stage__check">{I.check}</span> : i + 1}</div>
               <div className="x-stage__lbl">{s.label}</div>
-              {i === stageIdx && <div className="x-stage__pulse"/>}
+              {i === stageIdx && !animDone && <div className="x-stage__pulse"/>}
             </div>
           ))}
         </div>
 
         <div className="x-bigbar">
-          <div className="x-bigbar__fill" style={{ width: `${Math.round(progress * 100)}%` }}/>
+          <div className="x-bigbar__fill" style={{ width: waitingForClaude ? "100%" : `${Math.round(progress * 100)}%`, transition: waitingForClaude ? "none" : undefined }}/>
         </div>
         <div className="x-bigbar__meta">
-          <span>{Math.round(progress * 100)}%</span>
-          <span>~{Math.max(1, Math.ceil((1 - progress) * 5))}s remaining</span>
+          <span>{waitingForClaude ? "Waiting for AI…" : `${Math.round(progress * 100)}%`}</span>
+          {!waitingForClaude && <span>~{Math.max(1, Math.ceil((1 - progress) * 5))}s remaining</span>}
         </div>
 
         <div className="x-processing__log">
-          <div className={cx("x-logline", stageIdx >= 0 && "x-logline--on")}>→ Validated 7 files · 2.34 MB total</div>
-          <div className={cx("x-logline", stageIdx >= 1 && "x-logline--on")}>→ OCR complete · 7 pages · 4,128 tokens</div>
-          <div className={cx("x-logline", stageIdx >= 2 && "x-logline--on")}>→ Detected: 3 Invoices, 2 Lorry Receipts, 2 PODs</div>
-          <div className={cx("x-logline", stageIdx >= 3 && "x-logline--on")}>→ Extracted 142 fields · 12 flagged for review</div>
+          <div className={cx("x-logline", stageIdx >= 0 && "x-logline--on")}>→ Validated {count} file{count !== 1 ? "s" : ""}</div>
+          <div className={cx("x-logline", stageIdx >= 1 && "x-logline--on")}>→ OCR complete · reading page content</div>
+          <div className={cx("x-logline", stageIdx >= 2 && "x-logline--on")}>→ Identifying document type and fields</div>
+          <div className={cx("x-logline", (stageIdx >= 3 || waitingForClaude) && "x-logline--on")}>→ {waitingForClaude ? "Waiting for Claude response…" : "Cross-checking extracted fields"}</div>
         </div>
       </div>
     </div>

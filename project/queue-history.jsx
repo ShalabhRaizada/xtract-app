@@ -107,7 +107,7 @@ function HistoryScreen({ rows }) {
       <div className="x-tabletoolbar">
         <div className="x-tabletoolbar__left">
           <Btn variant="ghost" size="sm" icon={I.filter}>Filter</Btn>
-          <Btn variant="ghost" size="sm" icon={I.download}>Export CSV</Btn>
+          <Btn variant="ghost" size="sm" icon={I.download} onClick={() => exportToExcel(rows)}>Export to Excel</Btn>
         </div>
         <div className="x-tabletoolbar__right">
           <div className="x-search">
