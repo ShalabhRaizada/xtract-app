@@ -125,15 +125,26 @@ function XtractApp() {
     const remaining = pendingDocs.length - 1;
     setShowSaveOverlay({ doc, remaining });
     setTimeout(() => {
+      // Build a label map so Excel export can use human-readable headers
+      const allFields = doc.fields.flatMap(g => g.fields);
+      const fieldLabels = {};
+      const fieldGroups = {};
+      allFields.forEach(f => {
+        fieldLabels[f.key] = f.label;
+        fieldGroups[f.key] = doc.fields.find(g => g.fields.some(ff => ff.key === f.key))?.group || "";
+      });
+
       // remove from pending, add to history
       const newHist = [{
-        id: doc.id, filename: doc.filename, typeLabel: doc.typeLabel,
+        id: doc.id, filename: doc.filename, type: doc.type, typeLabel: doc.typeLabel,
         saved: new Date().toLocaleString("en-IN", { hour: "2-digit", minute: "2-digit", year: "numeric", month: "2-digit", day: "2-digit" }).replace(",", ""),
         auditor: "You",
-        flagged: doc.fields.flatMap(g => g.fields).filter(f => f.confidence < 0.75 && !edited[f.key]).length,
+        flagged: allFields.filter(f => f.confidence < 0.75 && !edited[f.key]).length,
         total: values.total || values.freight_amount || values.balance || "—",
         status: "Verified",
         fieldValues: { ...values },
+        fieldLabels,
+        fieldGroups,
       }, ...history];
       setHistory(newHist);
       saveStoredHistory(newHist);

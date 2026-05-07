@@ -22,7 +22,7 @@ function saveStoredHistory(history) {
 function exportToExcel(history) {
   const wb = XLSX.utils.book_new();
 
-  // ---- Sheet 1: Summary ----
+  // ── Sheet 1: Summary ──────────────────────────────────────────────────────
   const summaryRows = history.map(r => ({
     "Doc ID":         r.id,
     "Filename":       r.filename,
@@ -35,46 +35,82 @@ function exportToExcel(history) {
   }));
   const summaryWs = XLSX.utils.json_to_sheet(summaryRows);
   summaryWs["!cols"] = [
-    { wch: 12 }, { wch: 32 }, { wch: 18 }, { wch: 22 },
-    { wch: 16 }, { wch: 14 }, { wch: 16 }, { wch: 14 },
+    { wch: 12 }, { wch: 36 }, { wch: 18 }, { wch: 22 },
+    { wch: 16 }, { wch: 14 }, { wch: 18 }, { wch: 14 },
   ];
+  styleHeader(summaryWs, summaryRows.length);
   XLSX.utils.book_append_sheet(wb, summaryWs, "Summary");
 
-  // ---- Sheet 2: Field Details (only rows that have saved field values) ----
-  const withFields = history.filter(r => r.fieldValues && Object.keys(r.fieldValues).length > 0);
-  if (withFields.length > 0) {
-    // Gather all unique field keys preserving first-seen order
-    const seen = new Set();
-    const allKeys = [];
-    withFields.forEach(r => {
-      Object.keys(r.fieldValues).forEach(k => {
-        if (!seen.has(k)) { seen.add(k); allKeys.push(k); }
+  // ── Sheets 2-4: One per document type ────────────────────────────────────
+  const docTypes = [
+    { key: "invoice", label: "Invoices" },
+    { key: "lorry",   label: "Lorry Receipts" },
+    { key: "pod",     label: "POD" },
+  ];
+
+  docTypes.forEach(({ key, label }) => {
+    const rows = history.filter(
+      r => r.fieldValues && Object.keys(r.fieldValues).length > 0 &&
+           (r.type === key || (!r.type && r.typeLabel && r.typeLabel.toLowerCase().includes(
+             key === "invoice" ? "invoice" : key === "lorry" ? "lorry" : "delivery"
+           )))
+    );
+    if (rows.length === 0) return;
+
+    // Collect all field keys in first-seen order, using human-readable labels as headers
+    const keyOrder = [];
+    const keyToLabel = {};
+    const keyToGroup = {};
+    rows.forEach(r => {
+      Object.keys(r.fieldValues || {}).forEach(k => {
+        if (!keyToLabel[k]) {
+          keyOrder.push(k);
+          keyToLabel[k] = (r.fieldLabels && r.fieldLabels[k]) || toTitleCase(k);
+          keyToGroup[k] = (r.fieldGroups && r.fieldGroups[k]) || "";
+        }
       });
     });
 
-    const detailRows = withFields.map(r => {
+    const detailRows = rows.map(r => {
       const row = {
         "Doc ID":   r.id,
         "Filename": r.filename,
-        "Type":     r.typeLabel,
         "Saved At": r.saved,
         "Status":   r.status,
       };
-      allKeys.forEach(k => { row[k] = r.fieldValues[k] ?? ""; });
+      keyOrder.forEach(k => {
+        const header = keyToGroup[k] ? `${keyToGroup[k]} — ${keyToLabel[k]}` : keyToLabel[k];
+        row[header] = r.fieldValues[k] ?? "";
+      });
       return row;
     });
 
-    const detailWs = XLSX.utils.json_to_sheet(detailRows);
-    // Auto-width for first fixed columns + 14 for field columns
-    detailWs["!cols"] = [
-      { wch: 12 }, { wch: 32 }, { wch: 18 }, { wch: 22 }, { wch: 14 },
-      ...allKeys.map(() => ({ wch: 22 })),
-    ];
-    XLSX.utils.book_append_sheet(wb, detailWs, "Field Details");
-  }
+    const ws = XLSX.utils.json_to_sheet(detailRows);
+    const fixedCols = [{ wch: 12 }, { wch: 36 }, { wch: 22 }, { wch: 14 }];
+    ws["!cols"] = [...fixedCols, ...keyOrder.map(() => ({ wch: 26 }))];
+    styleHeader(ws, detailRows.length);
+    XLSX.utils.book_append_sheet(wb, ws, label);
+  });
 
   const date = new Date().toISOString().slice(0, 10);
   XLSX.writeFile(wb, `xtract-export-${date}.xlsx`);
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function toTitleCase(key) {
+  return key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function styleHeader(ws, rowCount) {
+  // Bold the header row (row 0)
+  if (!ws["!ref"]) return;
+  const range = XLSX.utils.decode_range(ws["!ref"]);
+  for (let c = range.s.c; c <= range.e.c; c++) {
+    const addr = XLSX.utils.encode_cell({ r: 0, c });
+    if (!ws[addr]) continue;
+    ws[addr].s = { font: { bold: true }, fill: { fgColor: { rgb: "EEF2FF" } } };
+  }
 }
 
 Object.assign(window, { loadStoredHistory, saveStoredHistory, exportToExcel });
