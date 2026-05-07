@@ -1,54 +1,58 @@
 // Browser-side Claude API extraction — used when the Node server isn't available
 // Requires the user to supply their own API key (stored in localStorage)
 
-const EXTRACTION_SCHEMA_BROWSER = {
-  type: "object",
-  properties: {
-    doc_type:    { type: "string", enum: ["invoice", "lorry", "pod"] },
-    type_label:  { type: "string" },
-    field_groups: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          group:  { type: "string" },
-          fields: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                key:        { type: "string" },
-                label:      { type: "string" },
-                value:      { type: "string" },
-                confidence: { type: "number", minimum: 0, maximum: 1 },
-                bbox:       { type: "array", items: { type: "number" }, minItems: 4, maxItems: 4 },
+const EXTRACTION_TOOL_BROWSER = {
+  name: "extract_freight_document",
+  description: "Extract all structured data fields from an Indian freight document.",
+  input_schema: {
+    type: "object",
+    properties: {
+      doc_type:    { type: "string", enum: ["invoice", "lorry", "pod"] },
+      type_label:  { type: "string" },
+      field_groups: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            group:  { type: "string" },
+            fields: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  key:        { type: "string" },
+                  label:      { type: "string" },
+                  value:      { type: "string" },
+                  confidence: { type: "number", minimum: 0, maximum: 1 },
+                  bbox:       { type: "array", items: { type: "number" }, minItems: 4, maxItems: 4 },
+                },
+                required: ["key", "label", "value", "confidence", "bbox"],
+                additionalProperties: false,
               },
-              required: ["key", "label", "value", "confidence", "bbox"],
-              additionalProperties: false,
             },
           },
+          required: ["group", "fields"],
+          additionalProperties: false,
         },
-        required: ["group", "fields"],
-        additionalProperties: false,
       },
     },
+    required: ["doc_type", "type_label", "field_groups"],
+    additionalProperties: false,
   },
-  required: ["doc_type", "type_label", "field_groups"],
-  additionalProperties: false,
 };
 
-const EXTRACTION_PROMPT_BROWSER = `You are an AI extraction engine for Indian freight documents. Analyze this document carefully and extract all data fields.
+const EXTRACTION_PROMPT_BROWSER = `You are an AI extraction engine for Indian freight documents. Analyze this document carefully and extract all data fields using the extract_freight_document tool.
 
 First, identify the document type:
 - "invoice" = Commercial Invoice or Freight Invoice (has invoice number, GSTIN, freight charges)
 - "lorry" = Lorry Receipt / Truck Receipt / GR (Goods Receipt) — issued by transporter
 - "pod" = Proof of Delivery / Delivery Receipt — signed by recipient
 
-Extract ALL visible text fields, organized into logical sections. For each field provide:
+For each field provide:
 - key: snake_case identifier (e.g. "invoice_no", "consignee_gstin")
 - label: Human-readable name
 - value: The exact text from the document. Use "—" only if completely absent or illegible.
-- confidence: 0.0–1.0 — 0.95+ crystal clear, 0.75–0.95 minor uncertainty, 0.50–0.75 unclear, <0.50 guessed
+- confidence: 0.95+ crystal clear; 0.75–0.95 minor uncertainty; 0.50–0.75 unclear; <0.50 guessed
 - bbox: [x_percent, y_percent, width_percent, height_percent] — approximate position on page
 
 Group by type:
@@ -62,7 +66,6 @@ async function fileToBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
-      // result is "data:mime;base64,XXXXX" — strip the prefix
       const b64 = reader.result.split(",")[1];
       resolve(b64);
     };
@@ -72,12 +75,14 @@ async function fileToBase64(file) {
 }
 
 async function extractDocumentBrowser(file, apiKey) {
-  const isPDF = file.type === "application/pdf";
+  const isPDF = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+  const mimeType = isPDF ? "application/pdf"
+    : file.type || (file.name.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg");
   const base64 = await fileToBase64(file);
 
   const contentBlock = isPDF
     ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } }
-    : { type: "image",    source: { type: "base64", media_type: file.type,            data: base64 } };
+    : { type: "image",    source: { type: "base64", media_type: mimeType,           data: base64 } };
 
   const headers = {
     "x-api-key": apiKey,
@@ -94,13 +99,9 @@ async function extractDocumentBrowser(file, apiKey) {
       model: "claude-opus-4-7",
       max_tokens: 4096,
       system: EXTRACTION_PROMPT_BROWSER,
+      tools: [EXTRACTION_TOOL_BROWSER],
+      tool_choice: { type: "tool", name: "extract_freight_document" },
       messages: [{ role: "user", content: [contentBlock] }],
-      output_config: {
-        format: {
-          type: "json_schema",
-          json_schema: { name: "freight_document_extraction", schema: EXTRACTION_SCHEMA_BROWSER },
-        },
-      },
     }),
   });
 
@@ -110,9 +111,9 @@ async function extractDocumentBrowser(file, apiKey) {
   }
 
   const data = await response.json();
-  const textBlock = data.content.find(b => b.type === "text");
-  if (!textBlock) throw new Error("No text block in Claude response");
-  return JSON.parse(textBlock.text);
+  const toolUse = data.content.find(b => b.type === "tool_use");
+  if (!toolUse) throw new Error("Claude did not call the extraction tool");
+  return toolUse.input;
 }
 
 async function extractBatchBrowser(files, apiKey) {
@@ -154,6 +155,7 @@ async function extractBatchBrowser(files, apiKey) {
         }).replace(",", ""),
         status:    "error",
         fields:    [],
+        error:     err.message,
       });
     }
   }
@@ -162,17 +164,19 @@ async function extractBatchBrowser(files, apiKey) {
 
 async function checkServerAvailable() {
   try {
-    const res = await fetch("/api/health", { signal: AbortSignal.timeout(1500) });
-    return res.ok;
+    const res = await fetch("/api/health", { signal: AbortSignal.timeout(2000) });
+    if (!res.ok) return { up: false, hasApiKey: false };
+    const data = await res.json();
+    return { up: true, hasApiKey: !!data.hasApiKey };
   } catch {
-    return false;
+    return { up: false, hasApiKey: false };
   }
 }
 
 const API_KEY_STORAGE = "xtract_api_key";
-function getStoredApiKey()        { return localStorage.getItem(API_KEY_STORAGE); }
-function saveApiKey(key)          { localStorage.setItem(API_KEY_STORAGE, key); }
-function clearApiKey()            { localStorage.removeItem(API_KEY_STORAGE); }
+function getStoredApiKey()  { return localStorage.getItem(API_KEY_STORAGE); }
+function saveApiKey(key)    { localStorage.setItem(API_KEY_STORAGE, key); }
+function clearApiKey()      { localStorage.removeItem(API_KEY_STORAGE); }
 
 Object.assign(window, {
   extractBatchBrowser,

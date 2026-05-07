@@ -40,13 +40,19 @@ function XtractApp() {
 
     if (realFiles.length > 0) {
       extractPromiseRef.current = (async () => {
-        // Try Node server first (fast timeout)
-        const serverUp = await checkServerAvailable();
-        if (serverUp) {
+        // Check server health — includes whether it has an API key
+        const server = await checkServerAvailable();
+
+        if (server.up && server.hasApiKey) {
+          // Server is ready with a key — use it
           const formData = new FormData();
           realFiles.forEach(f => formData.append("files", f));
-          const res = await fetch("/api/extract-batch", { method: "POST", body: formData });
-          if (res.ok) return (await res.json()).docs;
+          try {
+            const res = await fetch("/api/extract-batch", { method: "POST", body: formData });
+            if (res.ok) return (await res.json()).docs;
+          } catch (e) {
+            console.warn("Server extraction failed, falling back to browser mode:", e.message);
+          }
         }
 
         // Fall back to browser-side extraction
