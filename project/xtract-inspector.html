@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>xTract — Inspector layout</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="styles.css"/>
+<style>
+  /* Inspector variation: doc large center, fields collapsed into focused right rail,
+     keyboard-first with field counter prominent, "current field" gets full focus */
+  .insp { display: grid; grid-template-columns: 56px 1fr 380px; height: 100vh; background: var(--bg); }
+  .insp-rail { background: var(--surface); border-right: 1px solid var(--line); display: flex; flex-direction: column; align-items: center; padding: 12px 0; gap: 4px; }
+  .insp-rail__logo { width: 32px; height: 32px; border-radius: 7px; background: var(--ink); color: #fff; display: grid; place-items: center; margin-bottom: 8px; }
+  .insp-rail__btn { width: 36px; height: 36px; border: 0; background: transparent; border-radius: 6px; color: var(--muted); display: grid; place-items: center; cursor: pointer; }
+  .insp-rail__btn--on { background: var(--accent-soft); color: var(--accent); }
+  .insp-rail__btn:hover { background: var(--surface-3); color: var(--ink); }
+  .insp-rail__btn svg { width: 18px; height: 18px; }
+  .insp-rail__spacer { flex: 1; }
+  .insp-rail__count { font-size: 10px; font-weight: 700; color: var(--muted); margin-top: 4px; font-family: var(--font-mono); }
+
+  .insp-doc { display: flex; flex-direction: column; min-height: 0; }
+  .insp-doc__bar { height: 48px; flex-shrink: 0; background: var(--surface); border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; padding: 0 16px; gap: 12px; }
+  .insp-doc__crumb { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .insp-doc__file { font-family: var(--font-mono); font-size: 12px; font-weight: 600; }
+  .insp-doc__pos { font-size: 11px; color: var(--muted); padding-left: 8px; border-left: 1px solid var(--line); margin-left: 4px; }
+  .insp-doc__main { flex: 1; min-height: 0; overflow: auto; background: #1f2937; padding: 24px; display: flex; justify-content: center; align-items: flex-start; }
+  .insp-doc__page { width: 100%; max-width: 720px; background: white; box-shadow: 0 12px 40px rgba(0,0,0,0.4); position: relative; }
+  .insp-doc__page img { width: 100%; height: auto; display: block; }
+
+  /* Focus mode bbox: the active field is brightly highlighted, others dim */
+  .insp-bbox { position: absolute; border: 1.5px solid transparent; transition: all 0.15s; pointer-events: auto; cursor: pointer; }
+  .insp-bbox--high { border-color: rgba(16, 185, 129, 0.4); }
+  .insp-bbox--med { border-color: rgba(245, 158, 11, 0.5); background: rgba(245,158,11,0.06); }
+  .insp-bbox--low { border-color: rgba(239, 68, 68, 0.6); background: rgba(239,68,68,0.1); }
+  .insp-bbox--current { border: 2px solid #fbbf24 !important; background: rgba(251, 191, 36, 0.25) !important; box-shadow: 0 0 0 6px rgba(251,191,36,0.3), 0 0 24px rgba(251,191,36,0.5); z-index: 5; }
+
+  .insp-field { background: var(--surface); border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+  .insp-field__head { padding: 16px 20px 12px; border-bottom: 1px solid var(--line); }
+  .insp-field__progress { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .insp-field__counter { font-size: 18px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  .insp-field__counter span { color: var(--muted); font-weight: 500; }
+  .insp-field__bar { flex: 1; height: 4px; background: var(--surface-3); border-radius: 999px; overflow: hidden; }
+  .insp-field__bar-fill { height: 100%; background: var(--accent); border-radius: inherit; }
+
+  .insp-field__group { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; }
+  .insp-field__lbl { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; margin-top: 6px; }
+  .insp-field__metarow { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+  .insp-field__pill { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 999px; }
+  .insp-field__pill--low { background: var(--conf-low-bg); color: var(--conf-low); }
+  .insp-field__pill--med { background: var(--conf-med-bg); color: var(--conf-med); }
+  .insp-field__pill--high { background: var(--conf-high-bg); color: var(--conf-high); }
+
+  .insp-field__body { padding: 20px; flex: 1; overflow: auto; }
+  .insp-field__input { width: 100%; padding: 12px 14px; border: 1.5px solid var(--accent); border-radius: 6px; font-family: var(--font-mono); font-size: 16px; font-weight: 600; outline: none; box-shadow: 0 0 0 4px var(--accent-soft); }
+  .insp-field__hint { font-size: 11px; color: var(--muted); margin-top: 10px; }
+  .insp-field__suggest { margin-top: 18px; padding: 12px 14px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; }
+  .insp-field__suggest-head { display: flex; align-items: center; gap: 6px; font-size: 11px; text-transform: uppercase; color: var(--muted); font-weight: 600; letter-spacing: 0.05em; margin-bottom: 8px; }
+  .insp-field__suggest-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; font-family: var(--font-mono); font-size: 13px; }
+  .insp-field__suggest-row + .insp-field__suggest-row { border-top: 1px dashed var(--line); }
+  .insp-field__suggest-row button { font-size: 11px; padding: 3px 8px; border: 1px solid var(--line); background: var(--surface); border-radius: 4px; cursor: pointer; }
+
+  .insp-field__list { padding: 0 20px 20px; border-top: 1px solid var(--line); padding-top: 14px; }
+  .insp-field__list-head { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 700; margin-bottom: 8px; }
+  .insp-field__list-item { display: grid; grid-template-columns: 18px 1fr auto; gap: 8px; align-items: center; padding: 5px 4px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+  .insp-field__list-item:hover { background: var(--surface-2); }
+  .insp-field__list-item--current { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .insp-field__list-item--done { color: var(--muted); }
+  .insp-field__list-num { font-family: var(--font-mono); font-size: 10px; color: var(--muted); text-align: right; }
+  .insp-field__list-dot { width: 8px; height: 8px; border-radius: 999px; }
+
+  .insp-foot { padding: 14px 20px; border-top: 1px solid var(--line); display: flex; gap: 8px; justify-content: space-between; align-items: center; background: var(--surface-2); }
+  .insp-keys { font-size: 11px; color: var(--muted); display: flex; gap: 12px; }
+  .insp-keys kbd { font-family: var(--font-mono); background: var(--surface); border: 1px solid var(--line); padding: 1px 5px; border-radius: 3px; font-size: 10px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" src="data.jsx"></script>
+<script type="text/babel" src="doc-svgs.jsx"></script>
+<script type="text/babel" src="components.jsx"></script>
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+function Inspector() {
+  const doc = window.DOCUMENTS[0];
+  const allFields = doc.fields.flatMap((g, gi) => g.fields.map(f => ({ ...f, group: g.group, gi })));
+  const [idx, setIdx] = useState(0);
+  const [values, setValues] = useState(() => Object.fromEntries(allFields.map(f => [f.key, f.value])));
+  const [done, setDone] = useState({});
+  const cur = allFields[idx];
+  const lvl = window.confidenceLevel(cur.confidence);
+
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key === "Tab") { e.preventDefault(); setDone(d => ({ ...d, [cur.key]: true })); setIdx(i => Math.min(allFields.length - 1, i + 1)); }
+      if (e.key === "Escape") { e.target.blur && e.target.blur(); }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [cur.key]);
+
+  const svg = window.DOC_SVGS[doc.id];
+  const dataUri = window.svgDataUri(svg);
+  const progress = ((Object.keys(done).length) / allFields.length) * 100;
+
+  const suggestions = [
+    { value: cur.value, conf: Math.round(cur.confidence*100) + "%" },
+    { value: cur.value.replace(/[A-Z]/g, c => c.toLowerCase()), conf: "62%" },
+    { value: cur.value.replace(/-/g, ""), conf: "41%" },
+  ];
+
+  return (
+    <div className="insp">
+      <div className="insp-rail">
+        <div className="insp-rail__logo">
+          <svg viewBox="0 0 24 24" width="18" height="18"><path d="M4 4l7 8-7 8h4l5-6 5 6h4l-7-8 7-8h-4l-5 6-5-6z" fill="currentColor"/></svg>
+        </div>
+        <button className="insp-rail__btn">{I.doc}</button>
+        <button className="insp-rail__btn insp-rail__btn--on">{I.spark}</button>
+        <button className="insp-rail__btn">{I.save}</button>
+        <div className="insp-rail__spacer"/>
+        <div className="insp-rail__count">{Object.keys(done).length}<br/>/{allFields.length}</div>
+      </div>
+      <div className="insp-doc">
+        <div className="insp-doc__bar">
+          <div className="insp-doc__crumb">
+            <DocTypeBadge type={doc.type} label={doc.typeLabel}/>
+            <span className="insp-doc__file">{doc.filename}</span>
+            <span className="insp-doc__pos">1 of 7</span>
+          </div>
+          <div style={{display:"flex",gap:6,alignItems:"center"}}>
+            <span className="x-statgroup x-statgroup--warn"><span className="x-statgroup__lbl">Flag</span><span className="x-statgroup__val">2</span></span>
+            <Btn variant="ghost" size="sm">Reject</Btn>
+            <Btn variant="ghost" size="sm">Skip</Btn>
+            <Btn variant="primary" size="sm" icon={I.save}>Save</Btn>
+          </div>
+        </div>
+        <div className="insp-doc__main">
+          <div className="insp-doc__page">
+            <img src={dataUri} alt=""/>
+            {allFields.map((f, i) => {
+              const [x,y,w,h] = f.bbox;
+              const flv = window.confidenceLevel(f.confidence);
+              return <div key={f.key}
+                className={`insp-bbox insp-bbox--${flv} ${i === idx ? "insp-bbox--current" : ""}`}
+                style={{left:`${x}%`,top:`${y}%`,width:`${w}%`,height:`${h}%`}}
+                onClick={() => setIdx(i)}/>;
+            })}
+          </div>
+        </div>
+      </div>
+      <div className="insp-field">
+        <div className="insp-field__head">
+          <div className="insp-field__progress">
+            <div className="insp-field__counter">{idx + 1}<span> / {allFields.length}</span></div>
+            <div className="insp-field__bar"><div className="insp-field__bar-fill" style={{width:`${progress}%`}}/></div>
+          </div>
+          <div className="insp-field__group">{cur.group}</div>
+          <div className="insp-field__lbl">{cur.label}</div>
+          <div className="insp-field__metarow">
+            <span className={`insp-field__pill insp-field__pill--${lvl}`}>
+              {lvl === "low" ? "Low confidence" : lvl === "med" ? "Verify" : "High confidence"} · {Math.round(cur.confidence*100)}%
+            </span>
+          </div>
+        </div>
+        <div className="insp-field__body">
+          <input className="insp-field__input" value={values[cur.key]} onChange={e => setValues(v => ({...v, [cur.key]: e.target.value}))} autoFocus/>
+          <div className="insp-field__hint">Press <kbd>Tab</kbd> to confirm and move to next field</div>
+          {lvl === "low" && (
+            <div className="insp-field__suggest">
+              <div className="insp-field__suggest-head">{I.spark} Alternate readings</div>
+              {suggestions.map((s, i) => (
+                <div key={i} className="insp-field__suggest-row">
+                  <span>{s.value} <span style={{color:"var(--muted)",marginLeft:6}}>{s.conf}</span></span>
+                  <button>Use</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="insp-field__list">
+          <div className="insp-field__list-head">All fields ({allFields.length})</div>
+          {allFields.slice(0, 8).map((f, i) => {
+            const flv = window.confidenceLevel(f.confidence);
+            return (
+              <div key={f.key}
+                className={`insp-field__list-item ${i === idx ? "insp-field__list-item--current" : ""} ${done[f.key] ? "insp-field__list-item--done" : ""}`}
+                onClick={() => setIdx(i)}>
+                <span className="insp-field__list-dot" style={{background: flv === "low" ? "var(--conf-low)" : flv === "med" ? "var(--conf-med)" : "var(--conf-high)"}}/>
+                <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.label}</span>
+                <span className="insp-field__list-num">{i+1}</span>
+              </div>
+            );
+          })}
+        </div>
+        <div className="insp-foot">
+          <div className="insp-keys"><span><kbd>Tab</kbd> next</span><span><kbd>↑↓</kbd> jump</span><span><kbd>⌘S</kbd> save</span></div>
+        </div>
+      </div>
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<Inspector/>);
+</script>
+</body>
+</html>
