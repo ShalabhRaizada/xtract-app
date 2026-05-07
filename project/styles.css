@@ -574,6 +574,7 @@ input, select, textarea { font-family: inherit; font-size: inherit; color: inher
   transition: max-width 0.15s;
 }
 .x-docviewer__img { display: block; width: 100%; height: auto; }
+.x-docviewer__pdf { display: block; width: 100%; height: 80vh; border: none; }
 .x-docviewer__overlay {
   position: absolute; inset: 0;
   pointer-events: none;
@@ -715,6 +716,32 @@ input, select, textarea { font-family: inherit; font-size: inherit; color: inher
 .x-field__pct { font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 28px; text-align: right; }
 
 .x-addfield { padding: 12px 14px; }
+
+.x-extract-error {
+  margin: 20px 14px;
+  padding: 16px;
+  background: var(--conf-low-bg);
+  border: 1px solid #fca5a5;
+  border-radius: var(--r-md);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.x-extract-error__ico { color: var(--conf-low); font-size: 18px; line-height: 1; }
+.x-extract-error__title { font-weight: 600; font-size: 13px; color: var(--ink); }
+.x-extract-error__body {
+  font-size: 12px;
+  color: var(--ink-2);
+  line-height: 1.7;
+}
+.x-extract-error__body code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: rgba(0,0,0,0.06);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+.x-extract-error__body a { color: var(--accent); }
 
 /* segmented */
 .x-segmented {

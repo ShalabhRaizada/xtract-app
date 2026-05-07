@@ -127,39 +127,59 @@ function ReviewScreen({
             </div>
           </div>
           <div className="x-pane__body x-pane__body--scroll">
-            {doc.fields.map(group => {
-              const visible = visibleGroup(group);
-              if (visible.length === 0) return null;
-              return (
-                <div key={group.group} className="x-fieldgroup">
-                  <div className="x-fieldgroup__head">
-                    <span>{group.group}</span>
-                    <span className="x-fieldgroup__count">{visible.length}</span>
-                  </div>
-                  <div className="x-fieldgroup__body">
-                    {visible.map(field => (
-                      <FieldRow
-                        key={field.key}
-                        field={field}
-                        value={values[field.key] ?? ""}
-                        edited={edited[field.key]}
-                        hovered={hoveredField === field.key}
-                        focused={focusedField === field.key}
-                        onChange={handleChange}
-                        onHover={setHoveredField}
-                        onFocus={setFocusedField}
-                        onBlur={() => setFocusedField(null)}
-                        density={density}
-                        showConfidence={showConfidence}
-                      />
-                    ))}
-                  </div>
+            {doc.fields.length === 0 ? (
+              <div className="x-extract-error">
+                <div className="x-extract-error__ico">{I.alert}</div>
+                <div className="x-extract-error__title">
+                  {doc.status === "error" ? "Extraction failed" : "No fields extracted"}
                 </div>
-              );
-            })}
-            <div className="x-addfield">
-              <Btn variant="ghost" size="sm" icon={I.add}>Add custom field</Btn>
-            </div>
+                <div className="x-extract-error__body">
+                  {doc.error
+                    ? <><strong>Error:</strong> {doc.error}<br/><br/></>
+                    : null}
+                  To extract fields, you need an Anthropic API key.<br/>
+                  <strong>Option 1 — Server:</strong> set <code>ANTHROPIC_API_KEY</code> before running <code>npm start</code>.<br/>
+                  <strong>Option 2 — Browser:</strong> re-upload and enter your key when prompted.<br/>
+                  <a href="https://console.anthropic.com" target="_blank" rel="noreferrer">Get a key →</a>
+                </div>
+              </div>
+            ) : (
+              doc.fields.map(group => {
+                const visible = visibleGroup(group);
+                if (visible.length === 0) return null;
+                return (
+                  <div key={group.group} className="x-fieldgroup">
+                    <div className="x-fieldgroup__head">
+                      <span>{group.group}</span>
+                      <span className="x-fieldgroup__count">{visible.length}</span>
+                    </div>
+                    <div className="x-fieldgroup__body">
+                      {visible.map(field => (
+                        <FieldRow
+                          key={field.key}
+                          field={field}
+                          value={values[field.key] ?? ""}
+                          edited={edited[field.key]}
+                          hovered={hoveredField === field.key}
+                          focused={focusedField === field.key}
+                          onChange={handleChange}
+                          onHover={setHoveredField}
+                          onFocus={setFocusedField}
+                          onBlur={() => setFocusedField(null)}
+                          density={density}
+                          showConfidence={showConfidence}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+            {doc.fields.length > 0 && (
+              <div className="x-addfield">
+                <Btn variant="ghost" size="sm" icon={I.add}>Add custom field</Btn>
+              </div>
+            )}
           </div>
         </div>
       </div>

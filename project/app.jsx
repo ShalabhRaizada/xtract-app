@@ -39,6 +39,14 @@ function XtractApp() {
     setUploadedFileCount(files.length);
 
     if (realFiles.length > 0) {
+      // Create blob URLs before any async work so we can show the actual file
+      const fileUrlMap = {};
+      realFiles.forEach(f => { fileUrlMap[f.name] = URL.createObjectURL(f); });
+
+      const attachFileUrls = docs => docs
+        ? docs.map(d => ({ ...d, fileUrl: fileUrlMap[d.filename] || null }))
+        : docs;
+
       extractPromiseRef.current = (async () => {
         // Check server health — includes whether it has an API key
         const server = await checkServerAvailable();
@@ -49,7 +57,7 @@ function XtractApp() {
           realFiles.forEach(f => formData.append("files", f));
           try {
             const res = await fetch("/api/extract-batch", { method: "POST", body: formData });
-            if (res.ok) return (await res.json()).docs;
+            if (res.ok) return attachFileUrls((await res.json()).docs);
           } catch (e) {
             console.warn("Server extraction failed, falling back to browser mode:", e.message);
           }
@@ -61,12 +69,13 @@ function XtractApp() {
           // Pause and wait for the user to enter their key
           pendingFilesRef.current = realFiles;
           setShowApiKeyModal(true);
-          return await new Promise((resolve, reject) => {
+          const docs = await new Promise((resolve, reject) => {
             window.__xtractApiKeyResolve = resolve;
             window.__xtractApiKeyReject  = reject;
           });
+          return attachFileUrls(docs);
         }
-        return await extractBatchBrowser(realFiles, apiKey);
+        return attachFileUrls(await extractBatchBrowser(realFiles, apiKey));
       })();
     } else {
       extractPromiseRef.current = null;

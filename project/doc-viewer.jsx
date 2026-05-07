@@ -2,44 +2,68 @@
 // Two-way hover linking with field list.
 
 function DocViewer({ doc, hoveredField, focusedField, onHoverField, onFocusField, highlightStyle = "box", scale = 1 }) {
-  const svg = window.DOC_SVGS[doc.id] || window.INVOICE_SVG;
-  const dataUri = window.svgDataUri(svg);
-
   const allFields = doc.fields.flatMap(g => g.fields);
+
+  const isPDF = doc.filename && doc.filename.toLowerCase().endsWith(".pdf");
+
+  // Determine document source: real uploaded file, or mock SVG template
+  let docSrc = doc.fileUrl || null;
+  let useSvg = false;
+  if (!docSrc) {
+    const svg = window.DOC_SVGS[doc.id] || window.INVOICE_SVG;
+    docSrc = window.svgDataUri(svg);
+    useSvg = true;
+  }
+
+  const bboxOverlay = (
+    <div className="x-docviewer__overlay">
+      {allFields.map(f => {
+        if (!f.bbox) return null;
+        const [x, y, w, h] = f.bbox;
+        const isHovered = hoveredField === f.key;
+        const isFocused = focusedField === f.key;
+        const lvl = window.confidenceLevel(f.confidence);
+        return (
+          <div
+            key={f.key}
+            className={cx(
+              "x-bbox",
+              `x-bbox--${highlightStyle}`,
+              `x-bbox--${lvl}`,
+              isHovered && "x-bbox--hover",
+              isFocused && "x-bbox--focus",
+            )}
+            style={{ left: `${x}%`, top: `${y}%`, width: `${w}%`, height: `${h}%` }}
+            onMouseEnter={() => onHoverField && onHoverField(f.key)}
+            onMouseLeave={() => onHoverField && onHoverField(null)}
+            onClick={() => onFocusField && onFocusField(f.key)}
+          >
+            {(isHovered || isFocused) && (
+              <div className="x-bbox__tag">{f.label}</div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
 
   return (
     <div className="x-docviewer" style={{ "--scale": scale }}>
       <div className="x-docviewer__page">
-        <img src={dataUri} alt={doc.filename} className="x-docviewer__img" draggable={false}/>
-        <div className="x-docviewer__overlay">
-          {allFields.map(f => {
-            if (!f.bbox) return null;
-            const [x, y, w, h] = f.bbox;
-            const isHovered = hoveredField === f.key;
-            const isFocused = focusedField === f.key;
-            const lvl = window.confidenceLevel(f.confidence);
-            return (
-              <div
-                key={f.key}
-                className={cx(
-                  "x-bbox",
-                  `x-bbox--${highlightStyle}`,
-                  `x-bbox--${lvl}`,
-                  isHovered && "x-bbox--hover",
-                  isFocused && "x-bbox--focus",
-                )}
-                style={{ left: `${x}%`, top: `${y}%`, width: `${w}%`, height: `${h}%` }}
-                onMouseEnter={() => onHoverField && onHoverField(f.key)}
-                onMouseLeave={() => onHoverField && onHoverField(null)}
-                onClick={() => onFocusField && onFocusField(f.key)}
-              >
-                {(isHovered || isFocused) && (
-                  <div className="x-bbox__tag">{f.label}</div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+        {!useSvg && isPDF ? (
+          // Real PDF — use iframe, no bbox overlay (PDF coordinates differ)
+          <iframe
+            src={docSrc}
+            title={doc.filename}
+            className="x-docviewer__pdf"
+          />
+        ) : (
+          // Image or mock SVG — show with bbox overlay
+          <>
+            <img src={docSrc} alt={doc.filename} className="x-docviewer__img" draggable={false}/>
+            {bboxOverlay}
+          </>
+        )}
       </div>
     </div>
   );
