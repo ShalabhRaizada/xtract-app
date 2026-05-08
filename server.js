@@ -117,7 +117,7 @@ async function extractDocument(fileBuffer, mimeType, filename) {
 
   const toolUse = response.content.find(b => b.type === 'tool_use');
   if (!toolUse) throw new Error('Claude did not call the extraction tool');
-  return toolUse.input;
+  return { data: toolUse.input, usage: response.usage };
 }
 
 app.post('/api/extract-batch', upload.array('files', 100), async (req, res) => {
@@ -135,7 +135,7 @@ app.post('/api/extract-batch', upload.array('files', 100), async (req, res) => {
     const file = req.files[i];
     console.log(`[${i + 1}/${req.files.length}] Extracting ${file.originalname}…`);
     try {
-      const extracted = await extractDocument(file.buffer, file.mimetype, file.originalname);
+      const { data: extracted, usage } = await extractDocument(file.buffer, file.mimetype, file.originalname);
       const ts = new Date().toLocaleString('en-IN', {
         year: 'numeric', month: '2-digit', day: '2-digit',
         hour: '2-digit', minute: '2-digit',
@@ -152,8 +152,8 @@ app.post('/api/extract-batch', upload.array('files', 100), async (req, res) => {
         status:     'pending',
         fields:     extracted.field_groups,
         tokenUsage: {
-          input:  response.usage?.input_tokens  || 0,
-          output: response.usage?.output_tokens || 0,
+          input:  usage?.input_tokens  || 0,
+          output: usage?.output_tokens || 0,
         },
       });
       console.log(`  ✓ ${file.originalname} → ${extracted.doc_type} (${extracted.field_groups.reduce((n, g) => n + g.fields.length, 0)} fields)`);
