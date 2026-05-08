@@ -134,6 +134,10 @@ function XtractApp() {
         fieldGroups[f.key] = doc.fields.find(g => g.fields.some(ff => ff.key === f.key))?.group || "";
       });
 
+      // Compute cost: claude-opus-4-7 → $5/1M input, $25/1M output
+      const tu = doc.tokenUsage;
+      const cost = tu ? (tu.input * 5 + tu.output * 25) / 1_000_000 : null;
+
       // remove from pending, add to history
       const newHist = [{
         id: doc.id, filename: doc.filename, type: doc.type, typeLabel: doc.typeLabel,
@@ -145,6 +149,8 @@ function XtractApp() {
         fieldValues: { ...values },
         fieldLabels,
         fieldGroups,
+        tokenUsage: tu || null,
+        cost,
       }, ...history];
       setHistory(newHist);
       saveStoredHistory(newHist);

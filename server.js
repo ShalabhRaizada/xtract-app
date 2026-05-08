@@ -142,15 +142,19 @@ app.post('/api/extract-batch', upload.array('files', 100), async (req, res) => {
       }).replace(',', '');
 
       results.push({
-        id:        `DOC-${String(now + i).slice(-6)}`,
-        filename:  file.originalname,
-        type:      extracted.doc_type,
-        typeLabel: extracted.type_label,
-        pages:     1,
-        sizeKb:    Math.round(file.size / 1024),
-        uploaded:  ts,
-        status:    'pending',
-        fields:    extracted.field_groups,
+        id:         `DOC-${String(now + i).slice(-6)}`,
+        filename:   file.originalname,
+        type:       extracted.doc_type,
+        typeLabel:  extracted.type_label,
+        pages:      1,
+        sizeKb:     Math.round(file.size / 1024),
+        uploaded:   ts,
+        status:     'pending',
+        fields:     extracted.field_groups,
+        tokenUsage: {
+          input:  response.usage?.input_tokens  || 0,
+          output: response.usage?.output_tokens || 0,
+        },
       });
       console.log(`  ✓ ${file.originalname} → ${extracted.doc_type} (${extracted.field_groups.reduce((n, g) => n + g.fields.length, 0)} fields)`);
     } catch (err) {

@@ -113,7 +113,7 @@ async function extractDocumentBrowser(file, apiKey) {
   const data = await response.json();
   const toolUse = data.content.find(b => b.type === "tool_use");
   if (!toolUse) throw new Error("Claude did not call the extraction tool");
-  return toolUse.input;
+  return { ...toolUse.input, _usage: data.usage || null };
 }
 
 async function extractBatchBrowser(files, apiKey) {
@@ -130,15 +130,18 @@ async function extractBatchBrowser(files, apiKey) {
       }).replace(",", "");
 
       results.push({
-        id:        `DOC-${String(now + i).slice(-6)}`,
-        filename:  file.name,
-        type:      extracted.doc_type,
-        typeLabel: extracted.type_label,
-        pages:     1,
-        sizeKb:    Math.round(file.size / 1024),
-        uploaded:  ts,
-        status:    "pending",
-        fields:    extracted.field_groups,
+        id:         `DOC-${String(now + i).slice(-6)}`,
+        filename:   file.name,
+        type:       extracted.doc_type,
+        typeLabel:  extracted.type_label,
+        pages:      1,
+        sizeKb:     Math.round(file.size / 1024),
+        uploaded:   ts,
+        status:     "pending",
+        fields:     extracted.field_groups,
+        tokenUsage: extracted._usage
+          ? { input: extracted._usage.input_tokens || 0, output: extracted._usage.output_tokens || 0 }
+          : null,
       });
     } catch (err) {
       console.error(`Failed to extract ${file.name}:`, err.message);

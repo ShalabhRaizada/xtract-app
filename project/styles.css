@@ -847,6 +847,33 @@ input, select, textarea { font-family: inherit; font-size: inherit; color: inher
 .x-summarycard--accent { background: var(--accent-soft); border-color: var(--accent); }
 .x-summarycard--accent .x-summarycard__num { color: var(--accent); }
 
+/* API usage strip */
+.x-usage-strip {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin: 0 20px 12px;
+  padding: 10px 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  font-size: 12px;
+}
+.x-usage-block {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 0 16px;
+  min-width: 100px;
+}
+.x-usage-block:first-child { padding-left: 0; }
+.x-usage-block__label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.x-usage-block__val { font-size: 16px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; font-family: var(--font-mono); }
+.x-usage-block__val--accent { color: var(--accent); }
+.x-usage-block__sub { font-size: 10px; color: var(--muted-2); }
+.x-usage-sep { width: 1px; background: var(--line); align-self: stretch; margin: 0 4px; flex-shrink: 0; }
+.x-usage-sep--grow { flex: 1; background: transparent; width: auto; }
+
 .x-tabletoolbar {
   padding: 0 20px 12px;
   display: flex;

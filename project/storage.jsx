@@ -24,19 +24,24 @@ function exportToExcel(history) {
 
   // ── Sheet 1: Summary ──────────────────────────────────────────────────────
   const summaryRows = history.map(r => ({
-    "Doc ID":         r.id,
-    "Filename":       r.filename,
-    "Type":           r.typeLabel,
-    "Saved At":       r.saved,
-    "Auditor":        r.auditor,
-    "Flagged Fields": r.flagged,
-    "Total Amount":   r.total,
-    "Status":         r.status,
+    "Doc ID":          r.id,
+    "Filename":        r.filename,
+    "Type":            r.typeLabel,
+    "Saved At":        r.saved,
+    "Auditor":         r.auditor,
+    "Flagged Fields":  r.flagged,
+    "Total Amount":    r.total,
+    "Status":          r.status,
+    "Input Tokens":    r.tokenUsage ? r.tokenUsage.input  : "",
+    "Output Tokens":   r.tokenUsage ? r.tokenUsage.output : "",
+    "Total Tokens":    r.tokenUsage ? r.tokenUsage.input + r.tokenUsage.output : "",
+    "Cost (USD)":      r.cost != null ? Number(r.cost.toFixed(4)) : "",
   }));
   const summaryWs = XLSX.utils.json_to_sheet(summaryRows);
   summaryWs["!cols"] = [
     { wch: 12 }, { wch: 36 }, { wch: 18 }, { wch: 22 },
     { wch: 16 }, { wch: 14 }, { wch: 18 }, { wch: 14 },
+    { wch: 14 }, { wch: 14 }, { wch: 13 }, { wch: 12 },
   ];
   styleHeader(summaryWs, summaryRows.length);
   XLSX.utils.book_append_sheet(wb, summaryWs, "Summary");

@@ -93,16 +93,84 @@ function QueueScreen({ docs, onProcess, onUploadMore, onOpenDoc, processedToday 
   );
 }
 
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function fmtTokens(n) {
+  if (!n) return "—";
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
+  if (n >= 1_000)     return (n / 1_000).toFixed(1) + "K";
+  return String(n);
+}
+function fmtCost(c) {
+  if (c === null || c === undefined) return "—";
+  if (c < 0.001) return "<$0.001";
+  if (c < 1)     return "$" + c.toFixed(3);
+  return "$" + c.toFixed(2);
+}
+function docType(r) {
+  if (r.type) return r.type;
+  const l = (r.typeLabel || "").toLowerCase();
+  if (l.includes("lorry") || l.includes("lr")) return "lorry";
+  if (l.includes("pod")   || l.includes("delivery")) return "pod";
+  return "invoice";
+}
+
+// ── Usage strip ──────────────────────────────────────────────────────────────
+function UsageStrip({ rows }) {
+  const withUsage = rows.filter(r => r.tokenUsage);
+  const totalIn   = withUsage.reduce((s, r) => s + (r.tokenUsage.input  || 0), 0);
+  const totalOut  = withUsage.reduce((s, r) => s + (r.tokenUsage.output || 0), 0);
+  const totalCost = rows.reduce((s, r) => s + (r.cost || 0), 0);
+  const docsWithCost = rows.filter(r => r.cost != null).length;
+  const avgCost   = docsWithCost > 0 ? totalCost / docsWithCost : null;
+
+  return (
+    <div className="x-usage-strip">
+      <div className="x-usage-block">
+        <div className="x-usage-block__label">Input tokens</div>
+        <div className="x-usage-block__val">{fmtTokens(totalIn)}</div>
+        <div className="x-usage-block__sub">@ $5 / 1M</div>
+      </div>
+      <div className="x-usage-sep"/>
+      <div className="x-usage-block">
+        <div className="x-usage-block__label">Output tokens</div>
+        <div className="x-usage-block__val">{fmtTokens(totalOut)}</div>
+        <div className="x-usage-block__sub">@ $25 / 1M</div>
+      </div>
+      <div className="x-usage-sep"/>
+      <div className="x-usage-block">
+        <div className="x-usage-block__label">Total tokens</div>
+        <div className="x-usage-block__val">{fmtTokens(totalIn + totalOut)}</div>
+        <div className="x-usage-block__sub">{withUsage.length} doc{withUsage.length !== 1 ? "s" : ""} tracked</div>
+      </div>
+      <div className="x-usage-sep x-usage-sep--grow"/>
+      <div className="x-usage-block x-usage-block--cost">
+        <div className="x-usage-block__label">Avg cost / doc</div>
+        <div className="x-usage-block__val x-usage-block__val--accent">{fmtCost(avgCost)}</div>
+        <div className="x-usage-block__sub">claude-opus-4-7</div>
+      </div>
+      <div className="x-usage-sep"/>
+      <div className="x-usage-block x-usage-block--cost">
+        <div className="x-usage-block__label">Total cost</div>
+        <div className="x-usage-block__val x-usage-block__val--accent">{fmtCost(totalCost || null)}</div>
+        <div className="x-usage-block__sub">{docsWithCost} doc{docsWithCost !== 1 ? "s" : ""} billed</div>
+      </div>
+    </div>
+  );
+}
+
+// ── HistoryScreen ─────────────────────────────────────────────────────────────
 function HistoryScreen({ rows }) {
   return (
     <div className="x-queue">
       <div className="x-queue__summary">
-        <div className="x-summarycard"><div className="x-summarycard__num">{rows.length}</div><div className="x-summarycard__lbl">Saved today</div></div>
+        <div className="x-summarycard"><div className="x-summarycard__num">{rows.length}</div><div className="x-summarycard__lbl">Saved</div></div>
         <div className="x-summarycard"><div className="x-summarycard__num">{rows.filter(r => r.status === "Verified").length}</div><div className="x-summarycard__lbl">Verified</div></div>
         <div className="x-summarycard"><div className="x-summarycard__num">{rows.filter(r => r.flagged > 0).length}</div><div className="x-summarycard__lbl">With flags</div></div>
-        <div className="x-summarycard"><div className="x-summarycard__num">12.4s</div><div className="x-summarycard__lbl">Avg time / doc</div></div>
-        <div className="x-summarycard x-summarycard--accent"><div className="x-summarycard__num">98.2%</div><div className="x-summarycard__lbl">Field accuracy</div></div>
+        <div className="x-summarycard"><div className="x-summarycard__num">{fmtTokens(rows.reduce((s,r) => s+(r.tokenUsage ? r.tokenUsage.input+r.tokenUsage.output : 0),0))}</div><div className="x-summarycard__lbl">Total tokens</div></div>
+        <div className="x-summarycard x-summarycard--accent"><div className="x-summarycard__num">{fmtCost(rows.reduce((s,r)=>s+(r.cost||0),0)||null)}</div><div className="x-summarycard__lbl">Total cost</div></div>
       </div>
+
+      <UsageStrip rows={rows}/>
 
       <div className="x-tabletoolbar">
         <div className="x-tabletoolbar__left">
@@ -126,17 +194,25 @@ function HistoryScreen({ rows }) {
           <div className="x-tcol x-tcol--name">Auditor</div>
           <div className="x-tcol x-tcol--num">Flags</div>
           <div className="x-tcol x-tcol--num">Total</div>
+          <div className="x-tcol x-tcol--num">Tokens</div>
+          <div className="x-tcol x-tcol--num">Cost</div>
           <div className="x-tcol x-tcol--status">Status</div>
         </div>
         {rows.map(r => (
           <div key={r.id} className="x-table__row">
-            <div className="x-tcol x-tcol--type"><DocTypeBadge type={r.typeLabel === "Invoice" ? "invoice" : r.typeLabel === "Lorry Receipt" ? "lorry" : "pod"} label={r.typeLabel}/></div>
+            <div className="x-tcol x-tcol--type"><DocTypeBadge type={docType(r)} label={r.typeLabel}/></div>
             <div className="x-tcol x-tcol--name x-mono">{r.filename}</div>
             <div className="x-tcol x-tcol--id x-mono x-muted">{r.id}</div>
             <div className="x-tcol x-tcol--time x-muted">{r.saved}</div>
             <div className="x-tcol x-tcol--name">{r.auditor}</div>
             <div className="x-tcol x-tcol--num">{r.flagged > 0 ? <span className="x-flagcount">{r.flagged}</span> : <span className="x-muted">0</span>}</div>
             <div className="x-tcol x-tcol--num x-mono">{r.total}</div>
+            <div className="x-tcol x-tcol--num x-mono x-muted" title={r.tokenUsage ? `In: ${r.tokenUsage.input.toLocaleString()} / Out: ${r.tokenUsage.output.toLocaleString()}` : ""}>
+              {r.tokenUsage ? fmtTokens(r.tokenUsage.input + r.tokenUsage.output) : <span className="x-muted">—</span>}
+            </div>
+            <div className="x-tcol x-tcol--num x-mono" style={{ color: r.cost ? "var(--accent)" : "var(--muted)" }}>
+              {fmtCost(r.cost ?? null)}
+            </div>
             <div className="x-tcol x-tcol--status"><StatusPill status={r.status}/></div>
           </div>
         ))}
