@@ -2,12 +2,15 @@
 const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
 // ---------------- Sidebar (left nav) ----------------
-function Sidebar({ active, onNavigate, queueCount, processedToday }) {
+function Sidebar({ active, onNavigate, queueCount, processedToday, authUser, onLogout }) {
   const items = [
     { id: "queue", label: "Queue", icon: I.doc, badge: queueCount },
     { id: "review", label: "Review", icon: I.spark },
     { id: "history", label: "History", icon: I.save },
   ];
+  const displayName = authUser ? (authUser.displayName || authUser.username) : "";
+  const roleLabel   = authUser ? (authUser.role === "admin" ? "Admin" : "Auditor") : "";
+
   return (
     <aside className="x-sidebar">
       <div className="x-sidebar__brand">
@@ -46,11 +49,16 @@ function Sidebar({ active, onNavigate, queueCount, processedToday }) {
         </div>
       </div>
       <div className="x-sidebar__user">
-        <Avatar name="Priya Nair"/>
-        <div>
-          <div className="x-sidebar__uname">Priya Nair</div>
-          <div className="x-sidebar__urole">Freight Auditor</div>
+        <Avatar name={displayName}/>
+        <div className="x-sidebar__userinfo">
+          <div className="x-sidebar__uname">{displayName}</div>
+          <div className="x-sidebar__urole">{roleLabel}</div>
         </div>
+        {onLogout && (
+          <button className="x-iconbtn x-sidebar__logout" onClick={onLogout} title="Sign out">
+            {I.logout}
+          </button>
+        )}
       </div>
     </aside>
   );

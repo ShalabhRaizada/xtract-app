@@ -9,8 +9,14 @@ const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "theme": "indigo"
 }/*EDITMODE-END*/;
 
+const AUTH_TOKEN_KEY = "xtract_token";
+
 function XtractApp() {
   const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+
+  // Auth state — undefined = checking, null = unauthenticated, object = user
+  const [authUser, setAuthUser]           = aUseState(undefined);
+  const [authChecked, setAuthChecked]     = aUseState(false);
 
   // App-level state
   const [screen, setScreen] = aUseState("queue"); // empty | upload | processing | review | queue | history
@@ -22,6 +28,29 @@ function XtractApp() {
   const [processedToday, setProcessedToday] = aUseState(127);
   const [uploadedFileCount, setUploadedFileCount] = aUseState(0);
   const extractPromiseRef = aUseRef(null);
+
+  // Verify stored token on startup
+  aUseEffect(() => {
+    const token = localStorage.getItem(AUTH_TOKEN_KEY);
+    if (!token) { setAuthChecked(true); return; }
+    fetch("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data && data.user) setAuthUser(data.user);
+        else localStorage.removeItem(AUTH_TOKEN_KEY);
+      })
+      .catch(() => {}) // server down — clear and re-check below
+      .finally(() => setAuthChecked(true));
+  }, []);
+
+  function handleLogin(user) {
+    setAuthUser(user);
+  }
+
+  function handleLogout() {
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+    setAuthUser(null);
+  }
 
   // Apply theme to root
   aUseEffect(() => {
@@ -55,8 +84,13 @@ function XtractApp() {
           // Server is ready with a key — use it
           const formData = new FormData();
           realFiles.forEach(f => formData.append("files", f));
+          const token = localStorage.getItem(AUTH_TOKEN_KEY) || "";
           try {
-            const res = await fetch("/api/extract-batch", { method: "POST", body: formData });
+            const res = await fetch("/api/extract-batch", {
+              method: "POST",
+              headers: token ? { Authorization: `Bearer ${token}` } : {},
+              body: formData,
+            });
             if (res.ok) return attachFileUrls((await res.json()).docs);
           } catch (e) {
             console.warn("Server extraction failed, falling back to browser mode:", e.message);
@@ -142,7 +176,7 @@ function XtractApp() {
       const newHist = [{
         id: doc.id, filename: doc.filename, type: doc.type, typeLabel: doc.typeLabel,
         saved: new Date().toLocaleString("en-IN", { hour: "2-digit", minute: "2-digit", year: "numeric", month: "2-digit", day: "2-digit" }).replace(",", ""),
-        auditor: "You",
+        auditor: authUser ? (authUser.displayName || authUser.username) : "You",
         flagged: allFields.filter(f => f.confidence < 0.75 && !edited[f.key]).length,
         total: values.total || values.freight_amount || values.balance || "—",
         status: "Verified",
@@ -258,6 +292,10 @@ function XtractApp() {
     body = <HistoryScreen rows={history}/>;
   }
 
+  // Show loading or auth gate before the main app
+  if (!authChecked) return null;
+  if (!authUser) return <AuthScreen onLogin={handleLogin}/>;
+
   return (
     <div className="x-app">
       <Sidebar
@@ -268,6 +306,8 @@ function XtractApp() {
         }}
         queueCount={pendingDocs.length}
         processedToday={processedToday}
+        authUser={authUser}
+        onLogout={handleLogout}
       />
       <main className="x-main">
         {topbar}

@@ -2,3 +2,4 @@ node_modules/
 xtract.zip
 *.log
 .env
+users.json

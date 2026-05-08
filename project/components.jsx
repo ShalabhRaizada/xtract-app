@@ -96,6 +96,7 @@ const I = {
   link:   <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M7 9.5L9 7.5M6 11l-1 1a2 2 0 0 1-3-3l2-2a2 2 0 0 1 3 0M10 5l1-1a2 2 0 0 1 3 3l-2 2a2 2 0 0 1-3 0"/></svg>,
   flag:   <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M3 14V2M3 3h9l-2 3 2 3H3"/></svg>,
   download: <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M8 2v9M8 11l-3-3M8 11l3-3M3 13h10"/></svg>,
+  logout:   <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M10 3h3v10h-3M6 11l4-3-4-3M10 8H3"/></svg>,
 };
 
 // Avatar
