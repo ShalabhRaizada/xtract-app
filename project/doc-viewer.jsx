@@ -1,19 +1,127 @@
-// Document viewer — renders SVG document with overlay bounding boxes
-// Two-way hover linking with field list.
+// Document viewer — renders document image with overlay bounding boxes
+// Supports rotation (0/90/180/270°) and canvas-based image enhancement.
 
-function DocViewer({ doc, hoveredField, focusedField, onHoverField, onFocusField, highlightStyle = "box", scale = 1 }) {
+// ── Image enhancement (unsharp mask + contrast) ──────────────────────────────
+function enhanceImage(imgEl, callback) {
+  const MAX = 2000;
+  let w = imgEl.naturalWidth, h = imgEl.naturalHeight;
+  if (!w || !h) { callback(null); return; }
+
+  const ratio = Math.min(MAX / w, MAX / h, 1);
+  w = Math.round(w * ratio);
+  h = Math.round(h * ratio);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(imgEl, 0, 0, w, h);
+
+  const orig = ctx.getImageData(0, 0, w, h);
+  const src  = orig.data;
+
+  // Pass 1 — mild 3×3 box blur for noise reduction
+  const blurred = new Float32Array(src.length);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let r = 0, g = 0, b = 0, cnt = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const px = Math.min(Math.max(x + dx, 0), w - 1);
+          const py = Math.min(Math.max(y + dy, 0), h - 1);
+          const i = (py * w + px) * 4;
+          r += src[i]; g += src[i + 1]; b += src[i + 2]; cnt++;
+        }
+      }
+      const i = (y * w + x) * 4;
+      blurred[i] = r / cnt; blurred[i + 1] = g / cnt; blurred[i + 2] = b / cnt;
+    }
+  }
+
+  // Pass 2 — unsharp mask: out = orig + strength*(orig − blurred)
+  const strength = 1.4;
+  const out = new Uint8ClampedArray(src.length);
+  for (let i = 0; i < src.length; i += 4) {
+    for (let c = 0; c < 3; c++) {
+      // unsharp mask
+      let v = src[i + c] + strength * (src[i + c] - blurred[i + c]);
+      // contrast boost: pull midtones away from 128
+      v = 128 + (v - 128) * 1.15;
+      out[i + c] = Math.min(255, Math.max(0, v));
+    }
+    out[i + 3] = src[i + 3];
+  }
+
+  ctx.putImageData(new ImageData(out, w, h), 0, 0);
+  callback(canvas.toDataURL("image/jpeg", 0.93));
+}
+
+// ── DocViewer ─────────────────────────────────────────────────────────────────
+function DocViewer({
+  doc, hoveredField, focusedField, onHoverField, onFocusField,
+  highlightStyle = "box", scale = 1, rotation = 0, enhanced = false,
+}) {
+  const imgRef   = React.useRef(null);
+  const pageRef  = React.useRef(null);
+  const [imgLoaded,   setImgLoaded]   = React.useState(false);
+  const [marginPx,    setMarginPx]    = React.useState(0);
+  const [enhancedSrc, setEnhancedSrc] = React.useState(null);
+  const [enhancing,   setEnhancing]   = React.useState(false);
+
+  // Recompute layout compensation whenever rotation or image changes
+  React.useEffect(() => {
+    const transposed = rotation === 90 || rotation === 270;
+    if (!transposed || !imgRef.current || !pageRef.current) { setMarginPx(0); return; }
+    const img = imgRef.current;
+    if (!img.complete || !img.naturalWidth) { setMarginPx(0); return; }
+    const renderedW = pageRef.current.offsetWidth;
+    const renderedH = renderedW * img.naturalHeight / img.naturalWidth;
+    setMarginPx((renderedW - renderedH) / 2);
+  }, [rotation, imgLoaded]);
+
+  // Run enhancement when toggled on (only for images, not PDFs, not mock SVGs)
+  const isPDF   = doc.filename && doc.filename.toLowerCase().endsWith(".pdf");
+  const hasFile = !!doc.fileUrl;
+
+  React.useEffect(() => {
+    if (!enhanced || enhancedSrc || isPDF || !hasFile) return;
+    if (!imgRef.current || !imgRef.current.complete) return;
+    setEnhancing(true);
+    enhanceImage(imgRef.current, result => {
+      setEnhancedSrc(result || null);
+      setEnhancing(false);
+    });
+  }, [enhanced, imgLoaded]);
+
+  // Reset enhanced src when document changes
+  React.useEffect(() => {
+    setEnhancedSrc(null);
+    setEnhancing(false);
+    setImgLoaded(false);
+    setMarginPx(0);
+  }, [doc.id]);
+
   const allFields = doc.fields.flatMap(g => g.fields);
 
-  const isPDF = doc.filename && doc.filename.toLowerCase().endsWith(".pdf");
-
-  // Determine document source: real uploaded file, or mock SVG template
-  let docSrc = doc.fileUrl || null;
-  let useSvg = false;
-  if (!docSrc) {
+  // Resolve source: enhanced > real file > mock SVG
+  let docSrc, useSvg = false;
+  if (enhanced && enhancedSrc) {
+    docSrc = enhancedSrc;
+  } else if (doc.fileUrl) {
+    docSrc = doc.fileUrl;
+  } else {
     const svg = window.DOC_SVGS[doc.id] || window.INVOICE_SVG;
     docSrc = window.svgDataUri(svg);
     useSvg = true;
   }
+
+  const transposed = rotation === 90 || rotation === 270;
+  const pageStyle  = {
+    transform:      `rotate(${rotation}deg)`,
+    transformOrigin:"center",
+    transition:     "transform 0.25s",
+    marginTop:      marginPx,
+    marginBottom:   marginPx,
+  };
 
   const bboxOverlay = (
     <div className="x-docviewer__overlay">
@@ -27,9 +135,7 @@ function DocViewer({ doc, hoveredField, focusedField, onHoverField, onFocusField
           <div
             key={f.key}
             className={cx(
-              "x-bbox",
-              `x-bbox--${highlightStyle}`,
-              `x-bbox--${lvl}`,
+              "x-bbox", `x-bbox--${highlightStyle}`, `x-bbox--${lvl}`,
               isHovered && "x-bbox--hover",
               isFocused && "x-bbox--focus",
             )}
@@ -38,9 +144,7 @@ function DocViewer({ doc, hoveredField, focusedField, onHoverField, onFocusField
             onMouseLeave={() => onHoverField && onHoverField(null)}
             onClick={() => onFocusField && onFocusField(f.key)}
           >
-            {(isHovered || isFocused) && (
-              <div className="x-bbox__tag">{f.label}</div>
-            )}
+            {(isHovered || isFocused) && <div className="x-bbox__tag">{f.label}</div>}
           </div>
         );
       })}
@@ -49,19 +153,24 @@ function DocViewer({ doc, hoveredField, focusedField, onHoverField, onFocusField
 
   return (
     <div className="x-docviewer" style={{ "--scale": scale }}>
-      <div className="x-docviewer__page">
+      {enhancing && (
+        <div className="x-docviewer__enhancing">Enhancing image…</div>
+      )}
+      <div ref={pageRef} className="x-docviewer__page" style={pageStyle}>
         {!useSvg && isPDF ? (
-          // Real PDF — use iframe, no bbox overlay (PDF coordinates differ)
-          <iframe
-            src={docSrc}
-            title={doc.filename}
-            className="x-docviewer__pdf"
-          />
+          <iframe src={docSrc} title={doc.filename} className="x-docviewer__pdf"/>
         ) : (
-          // Image or mock SVG — show with bbox overlay
           <>
-            <img src={docSrc} alt={doc.filename} className="x-docviewer__img" draggable={false}/>
-            {bboxOverlay}
+            <img
+              ref={imgRef}
+              src={docSrc}
+              alt={doc.filename}
+              className="x-docviewer__img"
+              draggable={false}
+              onLoad={() => setImgLoaded(true)}
+            />
+            {/* Bboxes align with original orientation; hide when transposed to avoid confusion */}
+            {!transposed && bboxOverlay}
           </>
         )}
       </div>
@@ -69,7 +178,7 @@ function DocViewer({ doc, hoveredField, focusedField, onHoverField, onFocusField
   );
 }
 
-// Field row — editable, with confidence indicator
+// ── FieldRow ──────────────────────────────────────────────────────────────────
 function FieldRow({ field, value, edited, hovered, focused, onChange, onHover, onFocus, onBlur, onFlag, density = "compact", showConfidence = true }) {
   const lvl = window.confidenceLevel(field.confidence);
   const inputRef = React.useRef(null);
@@ -81,20 +190,16 @@ function FieldRow({ field, value, edited, hovered, focused, onChange, onHover, o
   return (
     <div
       className={cx(
-        "x-field",
-        `x-field--${density}`,
-        `x-field--${lvl}`,
-        hovered && "x-field--hover",
-        focused && "x-field--focus",
-        edited && "x-field--edited",
+        "x-field", `x-field--${density}`, `x-field--${lvl}`,
+        hovered  && "x-field--hover",
+        focused  && "x-field--focus",
+        edited   && "x-field--edited",
       )}
       onMouseEnter={() => onHover && onHover(field.key)}
       onMouseLeave={() => onHover && onHover(null)}
     >
       <div className="x-field__head">
-        <label className="x-field__lbl" htmlFor={`f-${field.key}`}>
-          {field.label}
-        </label>
+        <label className="x-field__lbl" htmlFor={`f-${field.key}`}>{field.label}</label>
         {showConfidence && <ConfidenceDot confidence={field.confidence}/>}
         {edited && <span className="x-field__edited" title="Edited">●</span>}
       </div>

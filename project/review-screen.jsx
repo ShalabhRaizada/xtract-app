@@ -15,14 +15,17 @@ function ReviewScreen({
   const [edited, setEdited] = useState({});
   const [hoveredField, setHoveredField] = useState(null);
   const [focusedField, setFocusedField] = useState(null);
-  const [scale, setScale] = useState(1);
-  const [filter, setFilter] = useState("all"); // all | low | edited
+  const [scale,    setScale]    = useState(1);
+  const [rotation, setRotation] = useState(0);
+  const [enhanced, setEnhanced] = useState(false);
+  const [filter,   setFilter]   = useState("all"); // all | low | edited
 
   // reset on doc change
   useEffect(() => {
     const v = {};
     doc.fields.forEach(g => g.fields.forEach(f => { v[f.key] = f.value; }));
     setValues(v); setEdited({}); setHoveredField(null); setFocusedField(null);
+    setRotation(0); setEnhanced(false);
   }, [doc.id]);
 
   const allFields = useMemo(() => doc.fields.flatMap(g => g.fields), [doc.id]);
@@ -96,7 +99,14 @@ function ReviewScreen({
               <span className="x-zoomval">{Math.round(scale * 100)}%</span>
               <button className="x-iconbtn" onClick={() => setScale(s => Math.min(2, s + 0.1))} title="Zoom in">{I.zoomIn}</button>
               <button className="x-iconbtn" onClick={() => setScale(1)} title="Fit">{I.fit}</button>
-              <button className="x-iconbtn" title="Rotate">{I.rotate}</button>
+              <button className="x-iconbtn" onClick={() => setRotation(r => (r + 90) % 360)} title={`Rotate 90° (currently ${rotation}°)`}>{I.rotate}</button>
+              {doc.fileUrl && !doc.filename.toLowerCase().endsWith(".pdf") && (
+                <button
+                  className={cx("x-iconbtn", enhanced && "x-iconbtn--on")}
+                  onClick={() => setEnhanced(e => !e)}
+                  title={enhanced ? "Show original" : "Enhance image (sharpen + denoise)"}
+                >{I.enhance}</button>
+              )}
             </div>
           </div>
           <div className="x-pane__body x-pane__body--scroll">
@@ -108,6 +118,8 @@ function ReviewScreen({
               onFocusField={setFocusedField}
               highlightStyle={highlightStyle}
               scale={scale}
+              rotation={rotation}
+              enhanced={enhanced}
             />
           </div>
         </div>

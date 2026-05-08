@@ -239,6 +239,8 @@ input, select, textarea { font-family: inherit; font-size: inherit; color: inher
 .x-iconbtn:hover:not(:disabled) { background: var(--surface-3); color: var(--ink); }
 .x-iconbtn:disabled { opacity: 0.35; cursor: not-allowed; }
 .x-iconbtn svg { width: 14px; height: 14px; }
+.x-iconbtn--on { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+.x-iconbtn--on:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent); }
 
 .x-divider { width: 1px; height: 20px; background: var(--line); }
 
@@ -575,6 +577,14 @@ input, select, textarea { font-family: inherit; font-size: inherit; color: inher
 }
 .x-docviewer__img { display: block; width: 100%; height: auto; }
 .x-docviewer__pdf { display: block; width: 100%; height: 80vh; border: none; }
+.x-docviewer__enhancing {
+  position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+  background: var(--ink); color: #fff;
+  font-size: 11px; padding: 4px 10px; border-radius: 999px;
+  z-index: 10; white-space: nowrap; pointer-events: none;
+  animation: x-fadein 0.2s;
+}
+@keyframes x-fadein { from { opacity: 0 } to { opacity: 1 } }
 .x-docviewer__overlay {
   position: absolute; inset: 0;
   pointer-events: none;
